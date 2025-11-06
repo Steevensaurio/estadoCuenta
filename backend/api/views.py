@@ -12,7 +12,7 @@ import json, time
 
 @api_view(['GET'])
 def datos(request):
-    data = {"mensaje": "Hola desde Django!"}
+    data = [{"mensaje": "Hola!"}, {"mensaje": "desde"},{"mensaje": "Django!"},{"mensaje": "mensaje de confirmacion"}]
     return Response(data)
 
 
