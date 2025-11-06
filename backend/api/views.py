@@ -4,11 +4,12 @@ from rest_framework.decorators import api_view
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 import requests
-import json, time
+import xmlrpc.client, ast, time
 
 @api_view(['GET'])
 def datos(request):
@@ -26,7 +27,7 @@ def Login():
     options.add_argument("--disable-gpu")
 
     driver = webdriver.Chrome(options=options)
-    driver.get("https://aromotor.com/web#action=206&model=account.move&view_type=list&cids=1&menu_id=124")
+    driver.get("https://aromotor.com/web#action=204&model=account.move.line&view_type=list&cids=1&menu_id=124")
 
     wait = WebDriverWait(driver, 20)
     wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/main/div/form")))
@@ -46,27 +47,81 @@ def obtener_datos_clientes(request):
     driver = Login()
 
     wait = WebDriverWait(driver, 20)
-    wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[2]/div/div[2]/div/div[1]/table")))
+    wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[2]/div/div[1]/div[2]/div[2]/div[1]/div[3]/button")))
     time.sleep(3) 
 
-    soup = BeautifulSoup(driver.page_source, "html.parser")
+    boton = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[1]/div[2]/div[2]/div[1]/div[3]/button')
+    boton.click()
 
-    table = soup.find("table", class_="o_list_table")
+    boton = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[1]/div[2]/div[2]/div[1]/div[3]/ul/li[3]/a')
+    boton.click()
 
-    headers = []
-    for th in table.find("thead").find_all("th"):
-        text = th.get_text(strip=True)
-        if text and len(text) > 1:
-            headers.append(text)
+    cliente = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[2]/div/div[1]/table/thead/div/th[6]/input')
+    cliente.send_keys("RAMIREZ MENDOZA ANDRES ALCIDES", Keys.ENTER)
 
-    print(headers)
+    time.sleep(5)
 
+    boton = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[2]/div/div[1]/table/thead/tr/th[1]/div')
+    boton.click()
 
-    data = []
-    filas = soup.select("table.o_list_table tbody tr")
-    for f in filas:
-        celdas = [c.get_text(strip=True) for c in f.find_all("td")]
-        data.append(celdas)
-
+    time.sleep(2)
     
-    return Response(data)
+    boton = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[1]/div[2]/div[1]/div[2]/div/button')
+    boton.click()
+    
+    boton = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[1]/div[2]/div[1]/div[2]/div/ul/li[1]/a')
+    boton.click()
+
+    wait.until(EC.presence_of_element_located((By.XPATH, "/html/body/div[6]/div/div/div/div/div[2]/div[4]/div/select")))
+    plantilla = driver.find_element(By.XPATH, "/html/body/div[6]/div/div/div/div/div[2]/div[4]/div/select")
+    select = Select(plantilla)
+    select.select_by_visible_text("Plantilla Buró de crédito")
+
+    time.sleep(2)
+
+    boton = driver.find_element(By.XPATH, '/html/body/div[6]/div/div/footer/button[1]')
+    boton.click()
+
+
+    #
+    
+    return Response(None)
+
+@api_view(['GET'])
+def obtener_apuntes_contables(request):
+
+    usuario = "steevenandresmaila@gmail.com"
+    contraseña = "Vasodeagua11"
+    url = "https://aromotor.com"
+    db = "aromotor"
+
+    common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
+    uid = common.authenticate(db, usuario, contraseña, {})
+
+    if uid:
+        print(f"✅ Conectado con UID: {uid}")
+    else:
+        print("❌ Error de autenticación")
+
+    models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+
+
+    filtros = models.execute_kw(
+        db, uid, contraseña,
+        'ir.filters', 'search_read',
+        [[['model_id', '=', 'account.move.line']]],  # por ejemplo, apuntes contables
+        {'fields': ['id', 'name', 'domain', 'user_id']}
+    )
+
+    filtro = next(f for f in filtros if f['name'] == 'PLANTILLA BURÓ DE CRÉDITO')
+    domain_guardado = ast.literal_eval(filtro['domain'])
+    domain = domain_guardado + [['partner_id', '=', 'RAMIREZ MENDOZA ANDRES ALCIDES']]
+
+    apuntes = models.execute_kw(
+        db, uid, contraseña,
+        'account.move.line', 'search_read',
+        [domain],
+        {'fields': ['name','partner_id', 'date', 'date_maturity', 'move_name', 'partner_id', 'debit', 'credit', 'balance'], 'limit': 50}
+    )
+
+    return Response(apuntes)
