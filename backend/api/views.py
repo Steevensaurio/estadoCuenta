@@ -120,8 +120,66 @@ def obtener_apuntes_contables(request):
     apuntes = models.execute_kw(
         db, uid, contraseña,
         'account.move.line', 'search_read',
-        [domain],
-        {'fields': ['name','partner_id', 'date', 'date_maturity', 'move_name', 'partner_id', 'debit', 'credit', 'balance'], 'limit': 50}
+        [domain_guardado],
+        {'fields': ['name', 'partner_id', 'date', 'date_maturity', 'move_name', 'debit', 'credit', 'balance', 'move_id'], 'limit': 50}
     )
 
+# Crear un diccionario para no repetir consultas
+    move_ids = list({a['move_id'][0] for a in apuntes if a['move_id']})
+
+    # Obtener los datos de las facturas asociadas
+    moves = models.execute_kw(
+        db, uid, contraseña,
+        'account.move', 'read',
+        [move_ids],
+        {'fields': ['id', 'amount_residual']}
+    )
+
+    # Pasar a diccionario para acceder rápido por ID
+    residual_map = {m['id']: m['amount_residual'] for m in moves}
+
+    # Combinar datos
+    for a in apuntes:
+        move = a['move_id']
+        if move:
+            move_id = move[0]
+            a['amount_residual'] = residual_map.get(move_id, 0.0)
+        else:
+            a['amount_residual'] = 0.0
+
     return Response(apuntes)
+
+
+@api_view(['GET'])
+def obtener_cxc(request):
+    usuario = "steevenandresmaila@gmail.com"
+    contraseña = "Vasodeagua11"
+    url = "https://aromotor.com"
+    db = "aromotor"
+
+    common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
+    uid = common.authenticate(db, usuario, contraseña, {})
+
+    if uid:
+        print(f"✅ Conectado con UID: {uid}")
+    else:
+        print("❌ Error de autenticación")
+
+    models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+
+    filtros = models.execute_kw(
+        db, uid, contraseña,
+        'ir.filters', 'search_read',
+        [[['model_id', '=', 'account.move.line']]],  # por ejemplo, apuntes contables
+        {'fields': ['id', 'name', 'domain', 'user_id']}
+    )
+
+    fields = models.execute_kw(
+        db, uid, contraseña,
+        'account.pending.invoice', 'fields_get',
+        [],
+        {'attributes': ['string', 'help', 'type']}
+    )
+
+
+    return Response(fields)
