@@ -10,6 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 import requests
 import xmlrpc.client, ast, time
+from collections import defaultdict
 
 @api_view(['GET'])
 def datos(request):
@@ -157,13 +158,134 @@ def obtener_cxc(request):
     url = "https://aromotor.com"
     db = "aromotor"
 
+    # --- Autenticación ---
     common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
     uid = common.authenticate(db, usuario, contraseña, {})
 
-    if uid:
-        print(f"✅ Conectado con UID: {uid}")
-    else:
-        print("❌ Error de autenticación")
+    if not uid:
+        return Response({"error": "❌ Error de autenticación con Odoo"}, status=401)
+
+    models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
+
+    # --- 1. Obtener facturas pendientes ---
+    facturas = models.execute_kw(
+        db, uid, contraseña,
+        'account.move', 'search_read',
+        [[
+            ('move_type', '=', 'out_invoice'),
+            ('payment_state', 'in', ['not_paid', 'partial']),
+            ('state', '=', 'posted')
+        ]],
+        {
+            'fields': [
+                'id', 'name', 'partner_id', 'invoice_date',
+                'amount_total', 'amount_residual'
+            ],
+        }
+    )
+
+    ids_facturas = [f['id'] for f in facturas]
+
+    # --- 2. Obtener líneas contables ---
+    lineas = models.execute_kw(
+        db, uid, contraseña,
+        'account.move.line', 'search_read',
+        [[
+            ('move_id', 'in', ids_facturas),
+            ('date_maturity', '!=', False),
+        ]],
+        {
+            'fields': [
+                'move_id', 'name', 'account_id',
+                'debit', 'credit', 'balance',
+                'amount_residual', 'date_maturity'
+            ]
+        }
+    )
+
+    # --- 3. Obtener cheques en custodia ---
+    cheques = models.execute_kw(
+        db, uid, contraseña,
+        'account.payment', 'search_read',
+        [[
+            ('payment_method_id.name', 'ilike', 'cheque'),
+            ('payment_state', 'in', ['posted', 'in_custody', 'sent']),
+            ('is_internal_transfer', '=', False)
+        ]],
+        {
+            'fields': [
+                'id', 'name', 'partner_id', 'amount',
+                'payment_date', 'payment_state'
+            ]
+        }
+    )
+
+    # --- 4. Construir estructura de respuesta ---
+    estado_cuentas = defaultdict(lambda: {'facturas': [], 'cheques': []})
+
+    # Facturas
+    for f in facturas:
+        partner_id, partner_name = f['partner_id'] if f['partner_id'] else (None, 'Sin Cliente')
+        estado_cuentas[partner_name]['facturas'].append({
+            'id': f['id'],
+            'numero': f['name'],
+            'fecha': f['invoice_date'],
+            'total': f['amount_total'],
+            'pendiente': f['amount_residual'],
+            'cuotas': []
+        })
+
+    # Cuotas (líneas contables)
+    for l in lineas:
+        move_id = l['move_id'][0] if l['move_id'] else None
+        for partner, datos in estado_cuentas.items():
+            for factura in datos['facturas']:
+                if factura['id'] == move_id:
+                    factura['cuotas'].append({
+                        'descripcion': l['name'],
+                        'vencimiento': l.get('date_maturity'),
+                        'residual': l.get('amount_residual', 0),
+                        'debit': l.get('debit', 0),
+                        'credit': l.get('credit', 0)
+                    })
+
+    # Cheques
+    for c in cheques:
+        partner_id, partner_name = c['partner_id'] if c['partner_id'] else (None, 'Sin Cliente')
+        estado_cuentas[partner_name]['cheques'].append({
+            'numero': c['name'],
+            'monto': c['amount'],
+            'fecha': c['payment_date'],
+            'estado': c['payment_state']
+        })
+
+    # --- Convertir a formato JSON limpio (lista) ---
+    resultado = [
+        {
+            "cliente": cliente,
+            "facturas": datos["facturas"],
+            "cheques": datos["cheques"]
+        }
+        for cliente, datos in estado_cuentas.items()
+    ]
+
+    return Response(resultado)
+
+
+@api_view(['GET'])
+def filtros(request):
+
+    usuario = "steevenandresmaila@gmail.com"
+    contraseña = "Vasodeagua11"
+    url = "https://aromotor.com"
+    db = "aromotor"
+
+    # --- Autenticación ---
+    common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
+    uid = common.authenticate(db, usuario, contraseña, {})
+
+    if not uid:
+        return Response({"error": "❌ Error de autenticación con Odoo"}, status=401)
 
     models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
@@ -174,12 +296,6 @@ def obtener_cxc(request):
         {'fields': ['id', 'name', 'domain', 'user_id']}
     )
 
-    fields = models.execute_kw(
-        db, uid, contraseña,
-        'account.pending.invoice', 'fields_get',
-        [],
-        {'attributes': ['string', 'help', 'type']}
-    )
+    filtro = next(f for f in filtros if f['name'] == 'PLANTILLA BURÓ DE CRÉDITO')
 
-
-    return Response(fields)
+    return Response(filtro)

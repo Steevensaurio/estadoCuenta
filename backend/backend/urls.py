@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import path
-from api.views import datos, obtener_datos_clientes, obtener_apuntes_contables, obtener_cxc
+from api.views import datos, obtener_datos_clientes, obtener_apuntes_contables, obtener_cxc,filtros
 
 
 urlpatterns = [
@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/facturas/', obtener_datos_clientes),
     path('api/apuntes/', obtener_apuntes_contables),
     path('api/cxc/', obtener_cxc),
+    path('filtros/', filtros),
 ]
