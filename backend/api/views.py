@@ -272,9 +272,9 @@ def obtener_cxc(request):
     return Response(resultado)
 
 
+
 @api_view(['GET'])
 def filtros(request):
-
     usuario = "steevenandresmaila@gmail.com"
     contraseña = "Vasodeagua11"
     url = "https://aromotor.com"
@@ -283,19 +283,47 @@ def filtros(request):
     # --- Autenticación ---
     common = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/common")
     uid = common.authenticate(db, usuario, contraseña, {})
-
     if not uid:
-        return Response({"error": "❌ Error de autenticación con Odoo"}, status=401)
+        return Response({"error": "Error de autenticación"}, status=401)
 
     models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
-    filtros = models.execute_kw(
+    # --- Buscar un pago específico ---
+    pagos = models.execute_kw(
         db, uid, contraseña,
-        'ir.filters', 'search_read',
-        [[['model_id', '=', 'account.move.line']]],  # por ejemplo, apuntes contables
-        {'fields': ['id', 'name', 'domain', 'user_id']}
+        'account.payment', 'search_read',
+        [[
+            ('payment_method_id.name', 'ilike', 'cheque'),
+        ]],
+        {'fields': ['id', 'name', 'amount', 'x_payment_invoice_ids'], 'limit': 3}
     )
 
-    filtro = next(f for f in filtros if f['name'] == 'PLANTILLA BURÓ DE CRÉDITO')
+    resultado = []
 
-    return Response(filtro)
+    for pago in pagos:
+        facturas_relacionadas = []
+        ids_facturas = pago.get('x_payment_invoice_ids', [])
+
+        if ids_facturas:
+            facturas_relacionadas = models.execute_kw(
+                db, uid, contraseña,
+                'account.payment.invoice', 'search_read',
+                [[
+                    ('id', 'in', ids_facturas),
+                    ('to_pay', '=', True)
+                ]],
+                {'fields': [
+                    'move_name', 'invoice_date', 'invoice_amount', 'invoice_residual','to_pay'
+                ]}
+            )
+
+        resultado.append({
+            "pago": {
+                "id": pago['id'],
+                "numero": pago['name'],
+                "monto": pago['amount']
+            },
+            "facturas": facturas_relacionadas
+        })
+
+    return Response(resultado)
