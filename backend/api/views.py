@@ -411,21 +411,49 @@ def filtros(request):
 
     models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
+
+    cliente_filtro = request.query_params.get('cliente', None)
+
+    dominio_facturas = [
+            ('move_type', '=', 'out_invoice'),
+            ('payment_state', 'in', ['not_paid', 'partial']),
+            ('state', '=', 'posted')
+        ]
+    
+    dominio_cheques = [
+            ('payment_method_id.name', 'ilike', 'cheque'),
+            ('state', '=', 'custody'),
+        ]
+    
+    if cliente_filtro:
+        dominio_facturas.append(('partner_id.name', 'ilike', cliente_filtro)) 
+        dominio_cheques.append(('partner_id.name', 'ilike', cliente_filtro))
+
+
+     # --- Opciones para la consulta de facturas ---
+    options_facturas = {
+        'fields': [
+            'id', 'name', 'partner_id', 'invoice_date',
+            'amount_total', 'amount_residual'
+        ]
+    }
+    # Limitar a 20 facturas si no hay filtro de cliente
+    if not cliente_filtro:
+        options_facturas['limit'] = 20
+
+    # --- Opciones para la consulta de cheques ---
+    options_cheques = {'fields': ['id', 'name', 'amount', 'x_payment_invoice_ids', 'state', 'x_check_inbound_number']}
+    # Limitar a 20 cheques si no hay filtro de cliente
+    if not cliente_filtro:
+        options_cheques['limit'] = 20
+
+
     # --- 1. Obtener facturas pendientes ---
     facturas = models.execute_kw(
         db, uid, contraseña,
         'account.move', 'search_read',
-        [[
-            ('move_type', '=', 'out_invoice'),
-            ('payment_state', 'in', ['not_paid', 'partial']),
-            ('state', '=', 'posted')
-        ]],
-        {
-            'fields': [
-                'id', 'name', 'partner_id', 'invoice_date',
-                'amount_total', 'amount_residual'
-            ],
-        }
+        [dominio_facturas],
+        options_facturas
     )
 
     ids_facturas = [f['id'] for f in facturas]
@@ -451,11 +479,8 @@ def filtros(request):
     pagos = models.execute_kw(
         db, uid, contraseña,
         'account.payment', 'search_read',
-        [[
-            ('payment_method_id.name', 'ilike', 'cheque'),
-            ('state', '=', 'custody'),  # Corregido según tu actualización
-        ]],
-        {'fields': ['id', 'name', 'amount', 'x_payment_invoice_ids', 'state']}
+        [dominio_cheques],
+        options_cheques
     )
 
     cheques = []
@@ -483,6 +508,7 @@ def filtros(request):
                 "numero": pago['name'],
                 "monto": pago['amount'],
                 "estado": pago['state'],
+                "ncheque": pago['x_check_inbound_number'],
                 "facturas": facturas_relacionadas
             },
         })
@@ -526,5 +552,15 @@ def filtros(request):
                                 factura['cheques'].append(cheque['pago'])
     except Exception as e:
         print(f"    Error: {e}")
-    return Response(estado_cuentas)
+
+
+    cxc = [
+        {
+            'cliente': cliente,
+            'facturas': datos['facturas']
+        }
+        for cliente, datos in estado_cuentas.items()
+    ]
+        
+    return Response(cxc)
 

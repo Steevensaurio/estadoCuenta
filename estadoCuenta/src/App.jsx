@@ -16,7 +16,20 @@ function App() {
   const obtener_estado_cuenta = async () => {
     try {
       setIsLoading(true) // empieza el loading
-      const response = await axios.get(`${apiUrl}cxc`)
+      const response = await axios.get(`${apiUrl}prueba`)
+      setClientes(response.data)
+      console.log(response.data)
+    } catch (error) {
+      console.error("Error al obtener datos:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const consultar = async (term) => {
+    try {
+      setIsLoading(true)
+      const response = await axios.get(`${apiUrl}prueba/?cliente=${term}`, {})
       setClientes(response.data)
       console.log(response.data)
     } catch (error) {
@@ -37,8 +50,8 @@ function App() {
 
         <NavBar/>
         <main className="max-w-7xl mx-auto px-6 py-8">
-          <SearchBar text={searchTerm}/>
-          <Table data={clientes} searchTerm={searchTerm}/>
+          <SearchBar consultar={consultar}/>
+          <Table data={clientes} />
           <Footer/>
         </main>
         
