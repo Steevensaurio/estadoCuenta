@@ -95,8 +95,9 @@ const Table = ({data}) => {
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-20">Saldo</th>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-20">Cheques custodia</th>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-20">Valor Cheque</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-24">Valor sin custodia</th>
+              <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-20">Retención</th>
               <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-16">Días</th>
-              <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wide w-20">Estado</th>
             </tr>
           </thead>
 
@@ -106,15 +107,32 @@ const Table = ({data}) => {
               cxc.flatMap((clienteData) => {
                 const clientRows = []
 
+                // Calcular totales por cliente
+                const totalCuotasCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.debit, 0), 0).toFixed(2)
+                const totalAbonoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + (cuota.debit - cuota.residual), 0), 0).toFixed(2)
+                const totalSaldoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.residual, 0), 0).toFixed(2)
+                const totalChequesValorCliente = clienteData.facturas.reduce((sum, factura) => {
+                  const totalChequesFactura = factura.cheques && factura.cheques.length > 0 
+                    ? factura.cheques.reduce((subSum, cheque) => {
+                        const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+                        return subSum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+                      }, 0)
+                    : 0
+                  return sum + totalChequesFactura
+                }, 0).toFixed(2)
+                const valorSinCustodiaCliente = (parseFloat(totalCuotasCliente) - parseFloat(totalAbonoCliente) - parseFloat(totalChequesValorCliente)).toFixed(2)
+
                 clientRows.push(
-                  <tr key={`client-${clienteData.cliente}`} className="bg-gray-50 hover:bg-red-50 transition-colors">
-                    <td colSpan="11" className="px-6 py-4">
-                      <span className="text-sm font-bold text-gray-900 uppercase">{clienteData.cliente}</span>
-                      <span className="text-xs text-gray-500 font-semibold ml-3">
-                        ({clienteData.facturas.length} factura
-                        {clienteData.facturas.length !== 1 ? "s" : ""})
-                      </span>
-                    </td>
+                  <tr key={`client-${clienteData.cliente}`} className="bg-gray-200 hover:bg-red-50 transition-colors font-bold">
+                    <td colSpan="4" className="px-6 py-4 text-sm text-gray-900 uppercase">{clienteData.cliente}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900">${totalCuotasCliente}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-emerald-600">${totalAbonoCliente}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900">${totalSaldoCliente}</td>
+                    <td className="px-6 py-4">-</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900">${totalChequesValorCliente}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900">${valorSinCustodiaCliente}</td>
+                    <td className="px-6 py-4">-</td>
+                    <td className="px-6 py-4">-</td>
                   </tr>,
                 )
 
@@ -130,20 +148,22 @@ const Table = ({data}) => {
                         return sum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
                       }, 0).toFixed(2)
                     : "0.00"
+                  const valorSinCustodia = (parseFloat(totalCuotas) - parseFloat(totalAbono) - parseFloat(totalChequesValor)).toFixed(2)
 
                   clientRows.push(
                     <tr key={`factura-${factura.id}`} className="bg-gray-100 hover:bg-red-100 transition-colors">
                       <td className="px-6 py-3 text-sm font-bold text-gray-600 truncate">{factura.numero}</td>
                       <td className="px-6 py-3 text-xs font-bold text-gray-700">{factura.fecha}</td>
-                      <td className="px-6 py-3 text-xs text-gray-700"></td>
-                      <td className="px-6 py-3 text-sm text-gray-700"></td>
-                      <td className="px-6 py-3 text-sm font-semibold text-gray-900"></td>
-                      <td className="px-6 py-3 text-sm font-bold text-emerald-600"></td>
-                      <td className="px-6 py-3 text-sm font-bold text-gray-900"></td>
-                      <td className="px-6 py-3 text-sm"></td>
-                      <td className="px-6 py-3 text-sm"></td>
-                      <td className="px-6 py-3 text-sm"></td>
-                      <td className="px-6 py-3 text-sm"></td>
+                      <td className="px-6 py-3 text-xs text-gray-700">-</td>
+                      <td className="px-6 py-3 text-sm text-gray-700">-</td>
+                      <td className="px-6 py-3 text-sm font-semibold text-gray-900">-</td>
+                      <td className="px-6 py-3 text-sm font-bold text-emerald-600">-</td>
+                      <td className="px-6 py-3 text-sm font-bold text-gray-900">-</td>
+                      <td className="px-6 py-3 text-sm">-</td>
+                      <td className="px-6 py-3 text-sm">-</td>
+                      <td className="px-6 py-3 text-sm">-</td>
+                      <td className="px-6 py-3 text-sm">-</td>
+                      <td className="px-6 py-3 text-sm">-</td>
                     </tr>,
                   )
                   factura.cuotas.forEach((cuota, index) => {
@@ -152,14 +172,14 @@ const Table = ({data}) => {
                     const statusBgColor = getStatusBgColor(daysOverdue, cuota.residual)
                     clientRows.push(
                       <tr key={`cuota-${factura.id}-${index}`} className="group">
-                        <td className="px-6 py-3 text-sm font-medium text-gray-700"></td>
-                        <td className="px-6 py-3 text-sm text-gray-600"></td>
+                        <td className="px-6 py-3 text-sm font-medium text-gray-700">-</td>
+                        <td className="px-6 py-3 text-sm text-gray-600">-</td>
                         <td className="px-5 py-3 text-sm text-gray-700">Cuota {index + 1}</td>
                         <td className="px-6 py-3 text-sm text-gray-700">{cuota.vencimiento}</td>
                         <td className="px-6 py-3 text-sm font-semibold text-gray-900">
                           ${cuota.debit?.toFixed(2) || "0.00"}
                         </td>
-                        <td className="px-6 py-3 text-sm font-semibold text-emerald-600">
+                        <td className="px-6 py-3 text-sm font-semibold text-gray-900">
                           ${(cuota.debit - cuota.residual).toFixed(2)}
                         </td>
                         <td className="px-6 py-3 text-sm font-semibold text-gray-900">
@@ -198,73 +218,35 @@ const Table = ({data}) => {
                                   return null;
                                 })
                               ) : (
-                                <span></span>
+                                <span>-</span>
                               )}
                             </td>
                           </>
                         )}
-                        <td className={`px-6 py-3 text-sm ${getStatusColor(daysOverdue, cuota.residual)}`}>
+                        <td className="px-6 py-3 text-sm">-</td>
+                        {index === 0 && (
+                          <td className="px-6 py-3 text-sm font-bold text-gray-900" rowSpan={factura.cuotas.length}>
+                            {factura.retencion_total ? `$${factura.retencion_total.toFixed(2)}` : "N/A"}
+                          </td>
+                        )}
+                        <td className={`px-6 py-3 text-sm ${getStatusColor(daysOverdue, cuota.residual)} whitespace-nowrap`}>
                           {cuota.residual === 0 ? "0 días" : `${daysOverdue} días`}
-                        </td>
-                        <td className="px-6 py-3 text-sm">
-                          {cuota.residual === 0 ? (
-                            <span className="inline-flex items-center justify-center px-3 py-1">
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="24px" height="24px">
-                                <linearGradient
-                                  id="checkGradient"
-                                  x1="9.858"
-                                  x2="38.142"
-                                  y1="9.858"
-                                  y2="38.142"
-                                  gradientUnits="userSpaceOnUse"
-                                >
-                                  <stop offset="0" stopColor="#9dffce" />
-                                  <stop offset="1" stopColor="#50d18d" />
-                                </linearGradient>
-                                <path
-                                  fill="url(#checkGradient)"
-                                  d="M44,24c0,11.045-8.955,20-20,20S4,35.045,4,24S12.955,4,24,4S44,12.955,44,24z"
-                                />
-                                <linearGradient
-                                  id="checkGradient2"
-                                  x1="13"
-                                  x2="36"
-                                  y1="24.793"
-                                  y2="24.793"
-                                  gradientUnits="userSpaceOnUse"
-                                >
-                                  <stop offset=".824" stopColor="#135d36" />
-                                  <stop offset=".931" stopColor="#125933" />
-                                  <stop offset="1" stopColor="#11522f" />
-                                </linearGradient>
-                                <path
-                                  fill="url(#checkGradient2)"
-                                  d="M21.293,32.707l-8-8c-0.391-0.391-0.391-1.024,0-1.414l1.414-1.414c0.391-0.391,1.024-0.391,1.414,0L22,27.758l10.879-10.879c0.391-0.391,1.024-0.391,1.414,0l1.414,1.414c0.391,0.391,0.391,1.024,0,1.414l-13,13C22.317,33.098,21.683,33.098,21.293,32.707z"
-                                />
-                              </svg>
-                            </span>
-                          ) : (
-                            <span
-                              className={`inline-flex items-center justify-center px-3 py-1 rounded-lg text-xs font-bold border ${statusBgColor} ${getStatusColor(daysOverdue, cuota.residual)}`}
-                            >
-                              {statusText}
-                            </span>
-                          )}
                         </td>
                       </tr>,
                     )
                   })
                   // Nueva fila para totales después de las cuotas y cheques
                   clientRows.push(
-                    <tr key={`total-${factura.id}`} className="bg-gray-200 font-bold">
+                    <tr key={`total-${factura.id}`} className="bg-blue-50 font-bold">
                       <td colSpan="4" className="px-6 py-3 text-sm text-gray-900">Total</td>
                       <td className="px-6 py-3 text-sm font-bold text-gray-900">${totalCuotas}</td>
-                      <td className="px-6 py-3 text-sm font-bold text-emerald-600">${totalAbono}</td>
+                      <td className="px-6 py-3 text-sm font-bold text-gray-900">${totalAbono}</td>
                       <td className="px-6 py-3 text-sm font-bold text-gray-900">${totalSaldo}</td>
-                      <td className="px-6 py-3 text-sm"></td>
+                      <td className="px-6 py-3 text-sm">-</td>
                       <td className="px-6 py-3 text-sm font-bold text-gray-900">${totalChequesValor}</td>
-                      <td className="px-6 py-3 text-sm"></td>
-                      <td className="px-6 py-3 text-sm"></td>
+                      <td className="px-6 py-3 text-sm font-bold text-gray-900">${valorSinCustodia}</td>
+                      <td className="px-6 py-3 text-sm">-</td>
+                      <td className="px-6 py-3 text-sm">-</td>
                     </tr>,
                   )
                 })
@@ -273,7 +255,7 @@ const Table = ({data}) => {
               })
             ) : (
               <tr>
-                <td colSpan="11" className="px-6 py-12 text-center">
+                <td colSpan="12" className="px-6 py-12 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <Search className="w-8 h-8 text-gray-300" />
                     <p className="text-gray-600 font-semibold">No se encontraron facturas</p>

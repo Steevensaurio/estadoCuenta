@@ -1,8 +1,7 @@
 from django.urls import path
-from .views import ObtenerCXCView, filtros
+from .views import obtener_cxc_aromotor
 
 
 urlpatterns = [
-    path('obtener-cxc/', ObtenerCXCView.as_view(), name='obtener_cxc'),
-    path('obtener-cxc/<str:cliente>/', ObtenerCXCView.as_view(), name='obtener_cxc_con_filtro'), 
+    path('obtener-cxc/', obtener_cxc_aromotor),
 ]

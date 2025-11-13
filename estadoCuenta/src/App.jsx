@@ -11,12 +11,12 @@ function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL;
   const [clientes, setClientes] = useState([])
-  const { searchTerm, setSearchTerm, isLoading, setIsLoading } = useSearch()
+  const {setIsLoading } = useSearch()
 
   const obtener_estado_cuenta = async () => {
     try {
       setIsLoading(true) // empieza el loading
-      const response = await axios.get(`${apiUrl}prueba`)
+      const response = await axios.get(`${apiUrl}obtener-cxc/`)
       setClientes(response.data)
       console.log(response.data)
     } catch (error) {
@@ -29,7 +29,7 @@ function App() {
   const consultar = async (term) => {
     try {
       setIsLoading(true)
-      const response = await axios.get(`${apiUrl}prueba/?cliente=${term}`, {})
+      const response = await axios.get(`${apiUrl}obtener-cxc/?cliente=${term}`, {})
       setClientes(response.data)
       console.log(response.data)
     } catch (error) {
@@ -49,7 +49,7 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 
         <NavBar/>
-        <main className="max-w-7xl mx-auto px-6 py-8">
+        <main className="max-w-full mx-auto px-6 py-8">
           <SearchBar consultar={consultar}/>
           <Table data={clientes} />
           <Footer/>
