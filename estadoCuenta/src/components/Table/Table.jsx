@@ -140,7 +140,7 @@ const Table = ({data}) => {
               cxc.flatMap((clienteData) => {
                 const clientRows = []
 
-                // Calcular totales por cliente
+                // Calcular totales por cliente sobre todas las facturas (sin filtrar)
                 const totalCuotasCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.debit, 0), 0).toFixed(2)
                 const totalAbonoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + (cuota.debit - cuota.residual), 0), 0).toFixed(2)
                 const totalSaldoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.residual, 0), 0).toFixed(2)
@@ -168,7 +168,21 @@ const Table = ({data}) => {
                   </tr>,
                 )
 
-                clienteData.facturas.forEach((factura) => {
+                // Filtrar facturas donde valorSinCustodia > 0 para mostrar solo esas filas
+                const facturasFiltradas = clienteData.facturas.filter((factura) => {
+                  const totalAbono = factura.cuotas.reduce((sum, cuota) => sum + (cuota.debit - cuota.residual), 0)
+                  const totalCuotas = factura.cuotas.reduce((sum, cuota) => sum + cuota.debit, 0)
+                  const totalChequesValor = factura.cheques && factura.cheques.length > 0 
+                    ? factura.cheques.reduce((sum, cheque) => {
+                        const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+                        return sum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+                      }, 0)
+                    : 0
+                  const valorSinCustodia = parseFloat((totalCuotas - totalAbono - totalChequesValor).toFixed(2))
+                  return valorSinCustodia > 0
+                })
+
+                facturasFiltradas.forEach((factura) => {
                   // Calcular totales para la fila de total
                   const totalAbono = factura.cuotas.reduce((sum, cuota) => sum + (cuota.debit - cuota.residual), 0).toFixed(2)
                   const totalSaldo = factura.cuotas.reduce((sum, cuota) => sum + cuota.residual, 0).toFixed(2)
