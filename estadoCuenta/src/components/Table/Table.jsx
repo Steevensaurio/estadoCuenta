@@ -79,7 +79,7 @@ const Table = ({data}) => {
   const getStatusColor = (daysOverdue, residual) => {
     if (residual === 0) return "text-gray-600 font-bold"
     if (daysOverdue < 0) return "text-red-600 font-bold"
-    if (daysOverdue === 0) return "text-amber-600 font-bold"
+    if (daysOverdue === 0) return "text-gray-600 font-bold"
     return "text-gray-600 font-bold"
   }
 
@@ -157,7 +157,7 @@ const Table = ({data}) => {
                 const totalRetencionCliente = clienteData.facturas.reduce((sum, factura) => sum + (factura.retencion_total || 0), 0).toFixed(2)
 
                 clientRows.push(
-                  <tr key={`client-${clienteData.cliente}`} className="bg-gray-200 hover:bg-red-50 transition-colors font-bold">
+                  <tr key={`client-${clienteData.cliente}`} className="bg-gray-300 font-bold">
                     <td colSpan="4" className="px-6 py-4 text-sm text-gray-900 uppercase">{clienteData.cliente}</td>
                     <td className="px-6 py-4 text-sm font-bold text-gray-900">${totalCuotasCliente}</td>
                     <td className="px-6 py-4 text-sm font-bold text-gray-900">${totalAbonoCliente}</td>
@@ -183,7 +183,7 @@ const Table = ({data}) => {
                   const valorSinCustodia = (parseFloat(totalCuotas) - parseFloat(totalAbono) - parseFloat(totalChequesValor)).toFixed(2)
 
                   clientRows.push(
-                    <tr key={`factura-${factura.id}`} className="bg-gray-100 hover:bg-red-100 transition-colors">
+                    <tr key={`factura-${factura.id}`} className="bg-gray-200">
                       <td className="px-6 py-3 text-sm font-bold text-gray-600 truncate">{factura.numero}</td>
                       <td className="px-6 py-3 text-xs font-bold text-gray-700">{factura.fecha}</td>
                       <td className="px-6 py-3 text-xs text-gray-700">-</td>
@@ -200,23 +200,24 @@ const Table = ({data}) => {
                     const daysOverdue = getDaysOverdue(cuota.vencimiento)
                     const statusText = getStatusText(daysOverdue, cuota.residual)
                     const statusBgColor = getStatusBgColor(daysOverdue, cuota.residual)
+                    const isOverdue = daysOverdue < 0 && cuota.residual > 0
                     clientRows.push(
-                      <tr key={`cuota-${factura.id}-${index}`} className={`group ${daysOverdue < 0 && cuota.residual > 0 ? 'bg-red-100' : daysOverdue === 0 && cuota.residual > 0 ? 'bg-amber-100' : ''}`}>
-                        <td className="px-6 py-3 text-sm font-medium text-gray-700">-</td>
-                        <td className="px-6 py-3 text-sm text-gray-600">-</td>
-                        <td className="px-5 py-3 text-sm text-gray-700">Cuota {index + 1}</td>
-                        <td className="px-6 py-3 text-sm text-gray-700">{cuota.vencimiento}</td>
-                        <td className="px-6 py-3 text-sm font-semibold text-gray-900">
+                      <tr key={`cuota-${factura.id}-${index}`} className="group">
+                        <td className={`px-6 py-3 text-sm font-medium text-gray-700 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>-</td>
+                        <td className={`px-6 py-3 text-sm text-gray-600 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>-</td>
+                        <td className={`px-5 py-3 text-sm text-gray-700 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>Cuota {index + 1}</td>
+                        <td className={`px-6 py-3 text-sm text-gray-700 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>{cuota.vencimiento}</td>
+                        <td className={`px-6 py-3 text-sm font-semibold text-gray-900 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>
                           ${cuota.debit?.toFixed(2) || "0.00"}
                         </td>
-                        <td className="px-6 py-3 text-sm font-semibold text-gray-900">
+                        <td className={`px-6 py-3 text-sm font-semibold text-gray-900 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>
                           ${(cuota.debit - cuota.residual).toFixed(2)}
                         </td>
-                        <td className="px-6 py-3 text-sm">-</td>
-                        <td className="px-6 py-3 text-sm font-semibold text-gray-900">
+                        <td className={`px-6 py-3 text-sm ${isOverdue ? 'text-red-600 font-bold' : ''}`}>-</td>
+                        <td className={`px-6 py-3 text-sm font-semibold text-gray-900 ${isOverdue ? 'text-red-600 font-bold' : ''}`}>
                           ${cuota.residual?.toFixed(2) || "0.00"}
                         </td>
-                        <td className="px-6 py-3 text-sm">-</td>
+                        <td className={`px-6 py-3 text-sm ${isOverdue ? 'text-red-600 font-bold' : ''}`}>-</td>
                         <td className={`px-6 py-3 text-sm ${getStatusColor(daysOverdue, cuota.residual)} whitespace-nowrap`}>
                           {cuota.residual === 0 ? "0 días" : daysOverdue < 0 ? `${Math.abs(daysOverdue)} días` : "0 días"}
                         </td>
