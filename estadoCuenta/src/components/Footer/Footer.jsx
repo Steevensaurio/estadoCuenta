@@ -6,6 +6,9 @@ const Footer = () =>{
           <p>
             Estado de Cuenta
           </p>
+          <p >
+            <span className="font-bold">Created by: </span> Steeven Maila
+          </p>
         </div>
     )
 }

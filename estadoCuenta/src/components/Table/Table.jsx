@@ -1,6 +1,11 @@
-import { useState, useMemo, useEffect } from "react"
+import {useMemo} from "react"
+import { FileText, FileSpreadsheet } from "lucide-react"
 import { Search } from "lucide-react"
 import { useSearch } from "../../hooks/useSearch"
+import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import logoImg from "../../assets/imgLogo.png"
 
 const Table = ({data}) => {
     const cxc = data
@@ -97,6 +102,244 @@ const Table = ({data}) => {
     return "bg-gray-100 border-gray-300"
   }
 
+  const exportToPDF = (data) => {
+    const doc = new jsPDF();
+
+    // --- Encabezado ---
+    const imgWidth = 50;
+    const imgHeight = 15;
+    doc.addImage(logoImg, 'PNG', 14, 10, imgWidth, imgHeight);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("IMPOR EXPORT AROMOTOR CIA. LTDA.", 70, 15);
+    doc.setFont("helvetica", "normal");
+    doc.text("CALLE CAMINO A LA BENGALA Y AV LOS COLONOS", 70, 21);
+    doc.text("Ecuador", 70, 27);
+
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.1);
+    doc.line(14, 32, 200, 32); // línea bajo encabezado
+
+    // --- Construir datos para tabla ---
+    const columns = ['Factura', 'Fecha de Emisión', 'Cuotas', 'Fecha máxima', 'Valor cuota', 'Abono', 'Retención', 'Saldo', 'Valor sin custodia', 'Días'];
+    const rows = [];
+
+    data.forEach(clienteData => {
+      const totalCuotasCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.debit, 0), 0).toFixed(2);
+      const totalAbonoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + (cuota.debit - cuota.residual), 0), 0).toFixed(2);
+      const totalSaldoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.residual, 0), 0).toFixed(2);
+      const totalChequesValorCliente = clienteData.facturas.reduce((sum, factura) => {
+        const totalChequesFactura = factura.cheques && factura.cheques.length > 0 
+          ? factura.cheques.reduce((subSum, cheque) => {
+              const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+              return subSum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+            }, 0)
+          : 0;
+        return sum + totalChequesFactura;
+      }, 0).toFixed(2);
+      const valorSinCustodiaCliente = (parseFloat(totalCuotasCliente) - parseFloat(totalAbonoCliente) - parseFloat(totalChequesValorCliente)).toFixed(2);
+
+      rows.push([clienteData.cliente, '', '', '', totalCuotasCliente, '', '', totalSaldoCliente, valorSinCustodiaCliente, '']);
+
+      const facturasFiltradas = clienteData.facturas.filter((factura) => {
+        const totalAbono = factura.cuotas.reduce((sum, cuota) => sum + (cuota.debit - cuota.residual), 0);
+        const totalCuotas = factura.cuotas.reduce((sum, cuota) => sum + cuota.debit, 0);
+        const totalChequesValor = factura.cheques && factura.cheques.length > 0 
+          ? factura.cheques.reduce((sum, cheque) => {
+              const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+              return sum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+            }, 0)
+          : 0;
+        const valorSinCustodia = parseFloat((totalCuotas - totalAbono - totalChequesValor).toFixed(2));
+        return valorSinCustodia > 0;
+      });
+
+      facturasFiltradas.forEach(factura => {
+        const totalChequesValorFactura = factura.cheques && factura.cheques.length > 0 
+          ? factura.cheques.reduce((sum, cheque) => {
+              const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+              return sum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+            }, 0)
+          : 0;
+
+        const totalAbono = factura.cuotas.reduce((sum, cuota) => sum + (cuota.debit - cuota.residual), 0).toFixed(2);
+        const totalSaldo = factura.cuotas.reduce((sum, cuota) => sum + cuota.residual, 0).toFixed(2);
+        const totalCuotas = factura.cuotas.reduce((sum, cuota) => sum + cuota.debit, 0).toFixed(2);
+        const valorSinCustodia = (parseFloat(totalCuotas) - parseFloat(totalAbono) - parseFloat(totalChequesValorFactura.toFixed(2))).toFixed(2);
+
+        rows.push([factura.numero, factura.fecha, '', '', '', '', '', '', '', '']);
+
+        factura.cuotas.forEach((cuota, index) => {
+          const daysOverdue = getDaysOverdue(cuota.vencimiento);
+          rows.push([
+            '',
+            '',
+            `Cuota ${index + 1}`,
+            cuota.vencimiento,
+            cuota.debit?.toFixed(2) || "0.00",
+            (cuota.debit - cuota.residual).toFixed(2),
+            '',
+            cuota.residual?.toFixed(2) || "0.00",
+            '',
+            daysOverdue < 0 && cuota.residual > 0 ? `${Math.abs(daysOverdue)} días` : "0 días"
+          ]);
+        });
+
+        rows.push(['Total', '', '', '', totalCuotas, totalAbono, factura.retencion_total?.toFixed(2) || "0.00", totalSaldo, valorSinCustodia, '']);
+      });
+
+      // Agregar una fila vacía después de cada cliente para crear espacio blanco
+      rows.push(['', '', '', '', '', '', '', '', '', '']);
+    });
+
+    autoTable(doc, {
+      startY: 38,
+      head: [columns],
+      body: rows,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [250, 0, 0], textColor: 255, fontStyle: 'bold' },
+
+      // Pinta en rojo las filas de cuotas vencidas con saldo residual > 0
+      // Y pone en negrita las filas de totales del cliente (fila con nombre del cliente)
+      // Y asegura que las filas vacías (espacio) tengan fondo blanco
+      didParseCell: data => {
+        if (data.section === 'body') {
+          const cellText = data.row.cells[9]?.text[0]; // Columna "Días"
+          if (data.column.index === 9 && cellText) {
+            const diasMatch = cellText.match(/(\d+)/);
+            if (diasMatch) {
+              const dias = parseInt(diasMatch[1]);
+              const saldoTexto = data.row.cells[7]?.text[0].replace(/[^0-9.-]+/g, '');
+              const residual = parseFloat(saldoTexto);
+
+              if (dias > 0 && residual > 0) {
+                // Pinta texto en rojo esta celda
+                data.cell.styles.textColor = [255, 0, 0];
+                // Opcional: pinta toda la fila en rojo
+                Object.values(data.row.cells).forEach(cell => {
+                  cell.styles.textColor = [255, 0, 0];
+                });
+              }
+            }
+          }
+
+          // Poner en negrita las filas de totales del cliente (donde la primera celda tiene el nombre del cliente, no vacía ni 'Total', y la tercera está vacía)
+          const firstCell = data.row.cells[0]?.text[0] || '';
+          const thirdCell = data.row.cells[2]?.text[0] || '';
+          if (firstCell !== '' && firstCell !== 'Total' && thirdCell === '') {
+            Object.values(data.row.cells).forEach(cell => {
+              cell.styles.fontStyle = 'bold';
+            });
+          }
+
+          // Asegurar que las filas vacías (espacio blanco) tengan fondo blanco
+          const isEmptyRow = Object.values(data.row.cells).every(cell => !cell.text[0] || cell.text[0].trim() === '');
+          if (isEmptyRow) {
+            Object.values(data.row.cells).forEach(cell => {
+              cell.styles.fillColor = [255, 255, 255]; // Blanco
+            });
+          }
+        }
+      }
+    });
+
+    doc.save("estado_cuenta.pdf");
+  };
+
+
+  const exportToExcel = (data) => {
+    const rows = [];
+    // Agregar encabezado de la tabla
+    rows.push(['Factura', 'Fecha de Emisión', 'Cuotas', 'Fecha máxima', 'Valor cuota', 'Abono', 'Retención', 'Saldo', 'Valor sin custodia', 'Días']);
+    data.forEach(clienteData => {
+      // Calcular totales por cliente sobre todas las facturas (sin filtrar)
+      const totalCuotasCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.debit, 0), 0).toFixed(2);
+      const totalAbonoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + (cuota.debit - cuota.residual), 0), 0).toFixed(2);
+      const totalSaldoCliente = clienteData.facturas.reduce((sum, factura) => sum + factura.cuotas.reduce((subSum, cuota) => subSum + cuota.residual, 0), 0).toFixed(2);
+      const totalChequesValorCliente = clienteData.facturas.reduce((sum, factura) => {
+        const totalChequesFactura = factura.cheques && factura.cheques.length > 0 
+          ? factura.cheques.reduce((subSum, cheque) => {
+              const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+              return subSum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+            }, 0)
+          : 0;
+        return sum + totalChequesFactura;
+      }, 0).toFixed(2);
+      const valorSinCustodiaCliente = (parseFloat(totalCuotasCliente) - parseFloat(totalAbonoCliente) - parseFloat(totalChequesValorCliente)).toFixed(2);
+      const totalRetencionCliente = clienteData.facturas.reduce((sum, factura) => sum + (factura.retencion_total || 0), 0).toFixed(2);
+      // Fila de cliente con totales
+      rows.push([clienteData.cliente, '', '', '', totalCuotasCliente, '', '', totalSaldoCliente, valorSinCustodiaCliente, '']);
+      // Filtrar facturas donde valorSinCustodia > 0 para mostrar solo esas filas
+      const facturasFiltradas = clienteData.facturas.filter((factura) => {
+        const totalAbono = factura.cuotas.reduce((sum, cuota) => sum + (cuota.debit - cuota.residual), 0);
+        const totalCuotas = factura.cuotas.reduce((sum, cuota) => sum + cuota.debit, 0);
+        const totalChequesValor = factura.cheques && factura.cheques.length > 0 
+          ? factura.cheques.reduce((sum, cheque) => {
+              const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+              return sum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+            }, 0)
+          : 0;
+        const valorSinCustodia = parseFloat((totalCuotas - totalAbono - totalChequesValor).toFixed(2));
+        return valorSinCustodia > 0;
+      });
+
+      facturasFiltradas.forEach((factura) => {
+        // Calcular totalChequesValor para la factura
+        const totalChequesValorFactura = factura.cheques && factura.cheques.length > 0 
+          ? factura.cheques.reduce((sum, cheque) => {
+              const facturaEnCheque = cheque.facturas.find(f => f.move_name === factura.numero);
+              return sum + (facturaEnCheque ? facturaEnCheque.amount_reconcile : 0);
+            }, 0)
+          : 0;
+        // Calcular totales para la fila de total
+        const totalAbono = factura.cuotas.reduce((sum, cuota) => sum + (cuota.debit - cuota.residual), 0).toFixed(2);
+        const totalSaldo = factura.cuotas.reduce((sum, cuota) => sum + cuota.residual, 0).toFixed(2);
+        const totalFactura = factura.total.toFixed(2);
+        const totalCuotas = factura.cuotas.reduce((sum, cuota) => sum + cuota.debit, 0).toFixed(2);
+        const totalChequesValor = totalChequesValorFactura.toFixed(2);
+        const valorSinCustodia = (parseFloat(totalCuotas) - parseFloat(totalAbono) - parseFloat(totalChequesValor)).toFixed(2);
+        // Fila de factura
+        rows.push([factura.numero, factura.fecha, '', '', '', '', '', '', '', '']);
+        // Filas de cuotas
+        factura.cuotas.forEach((cuota, index) => {
+          const daysOverdue = getDaysOverdue(cuota.vencimiento);
+          rows.push([
+            '',
+            '',
+            `Cuota ${index + 1}`,
+            cuota.vencimiento,
+            cuota.debit?.toFixed(2) || "0.00",
+            (cuota.debit - cuota.residual).toFixed(2),
+            '',
+            cuota.residual?.toFixed(2) || "0.00",
+            '',
+            cuota.residual === 0 ? "0 días" : daysOverdue < 0 ? `${Math.abs(daysOverdue)} días` : "0 días"
+          ]);
+        });
+        // Nueva fila para totales después de las cuotas
+        rows.push([
+          'Total',
+          '',
+          '',
+          '',
+          totalCuotas,
+          totalAbono,
+          factura.retencion_total?.toFixed(2) || "0.00",
+          totalSaldo,
+          valorSinCustodia,
+          ''
+        ]);
+      });
+    });
+    // Crear la hoja de Excel
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Estado de Cuenta");
+    // Descargar el archivo
+    XLSX.writeFile(wb, "estado_cuenta.xlsx");
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -116,6 +359,22 @@ const Table = ({data}) => {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex justify-end p-4 space-x-2">
+        <button 
+          className="flex items-center px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors duration-200 shadow-sm"
+          onClick={() => exportToPDF(cxc)}
+        >
+          <FileText className="w-4 h-4 mr-2" />
+          Exportar PDF
+        </button>
+        <button 
+          className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors duration-200 shadow-sm"
+          onClick={() => exportToExcel(cxc)}
+        >
+          <FileSpreadsheet className="w-4 h-4 mr-2" />
+          Exportar Excel
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full">
           {/* Table Header */}

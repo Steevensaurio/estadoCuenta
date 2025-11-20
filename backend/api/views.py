@@ -24,6 +24,11 @@ def obtener_cxc_aromotor(request):
     models = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
 
     cliente_filtro = request.query_params.get('cliente', None)
+    comercial_filtro = request.query_params.get('comercial', None)
+    femision_desde = request.query_params.get('emision_desde', None)
+    femision_hasta = request.query_params.get('emision_hasta', None)
+    fvenci_desde = request.query_params.get('vencimiento_desde', None)
+    fvenci_hasta = request.query_params.get('vencimiento_hasta', None)
 
     dominio_facturas = [
         ('move_type', '=', 'out_invoice'),
@@ -40,23 +45,37 @@ def obtener_cxc_aromotor(request):
         dominio_facturas.append(('partner_id.name', 'ilike', cliente_filtro)) 
         dominio_cheques.append(('partner_id.name', 'ilike', cliente_filtro))
 
+    if comercial_filtro:
+        dominio_facturas.append(('invoice_user_id.name', 'ilike', comercial_filtro))
+
+    if femision_desde:
+        dominio_facturas.append(('invoice_date', '>=', femision_desde))
+    if femision_hasta:
+        dominio_facturas.append(('invoice_date', '<=', femision_hasta))
+
+    if fvenci_desde:
+        dominio_facturas.append(('invoice_date_due', '>=', fvenci_desde))
+    if fvenci_hasta:
+        dominio_facturas.append(('invoice_date_due', '<=', fvenci_hasta))
+
     # --- Opciones para la consulta de facturas ---
     options_facturas = {
         'fields': [
             'id', 'name', 'partner_id', 'invoice_date',
             'amount_total', 'amount_residual',
-            'x_retention_id'  # Campos agregados para acceder a la retención
+            'x_retention_id',  # Campos agregados para acceder a la retención
+            'invoice_user_id' 
         ], 
         'order': 'invoice_date ASC'
     }
     # Limitar a 20 facturas si no hay filtro de cliente
-    if not cliente_filtro:
+    if not (cliente_filtro or comercial_filtro or femision_desde or femision_hasta or fvenci_desde or fvenci_hasta):
         options_facturas['limit'] = 20
 
     # --- Opciones para la consulta de cheques ---
     options_cheques = {'fields': ['id', 'name', 'amount', 'x_payment_invoice_ids', 'state', 'x_check_inbound_number']}
     # Limitar a 20 cheques si no hay filtro de cliente
-    if not cliente_filtro:
+    if not (cliente_filtro or comercial_filtro):
         options_cheques['limit'] = 20
 
     # --- 1. Obtener facturas pendientes ---
@@ -98,7 +117,7 @@ def obtener_cxc_aromotor(request):
         }
     )
 
-    # --- 3. Obtener cheques en custodia (usando lógica de filtros corregida) ---
+    # --- 3. Obtener cheques en custodia (optimizado: una sola consulta batch para facturas relacionadas) ---
     pagos = models.execute_kw(
         db, uid, contraseña,
         'account.payment', 'search_read',
@@ -106,25 +125,29 @@ def obtener_cxc_aromotor(request):
         options_cheques
     )
 
-    cheques = []
-
+    # Después de obtener 'pagos', recolecta todos los IDs de x_payment_invoice_ids
+    all_invoice_ids = []
     for pago in pagos:
-        facturas_relacionadas = []
+        all_invoice_ids.extend(pago.get('x_payment_invoice_ids', []))
+    all_invoice_ids = list(set(all_invoice_ids))  # Eliminar duplicados
+
+    # Una sola consulta para todas las facturas relacionadas
+    facturas_relacionadas_dict = {}
+    if all_invoice_ids:
+        facturas_relacionadas_data = models.execute_kw(
+            db, uid, contraseña,
+            'account.payment.invoice', 'search_read',
+            [[('id', 'in', all_invoice_ids), ('to_pay', '=', True)]],
+            {'fields': ['id', 'move_name', 'invoice_date', 'amount_reconcile', 'to_pay']}
+        )
+        # Crea un dict para mapear: {id: data}
+        facturas_relacionadas_dict = {fr['id']: fr for fr in facturas_relacionadas_data}
+
+    # Ahora construye la lista de cheques usando el dict
+    cheques = []
+    for pago in pagos:
         ids_facturas = pago.get('x_payment_invoice_ids', [])
-
-        if ids_facturas:
-            facturas_relacionadas = models.execute_kw(
-                db, uid, contraseña,
-                'account.payment.invoice', 'search_read',
-                [[
-                    ('id', 'in', ids_facturas),
-                    ('to_pay', '=', True)
-                ]],
-                {'fields': [
-                    'move_name', 'invoice_date','amount_reconcile','to_pay'
-                ]}
-            )
-
+        facturas_relacionadas = [facturas_relacionadas_dict.get(fid) for fid in ids_facturas if fid in facturas_relacionadas_dict]
         cheques.append({
             "pago": {
                 "id": pago['id'],
@@ -141,6 +164,7 @@ def obtener_cxc_aromotor(request):
     # Facturas
     for f in facturas:
         partner_id, partner_name = f['partner_id'] if f['partner_id'] else (None, 'Sin Cliente')
+        comercial_id, comercial_name = f['invoice_user_id'] if f['invoice_user_id'] else (None, 'Sin Comercial')
         retention_id = f.get('x_retention_id', [None])[0] if f.get('x_retention_id') else None
         retention_value = retenciones.get(retention_id, {'total': 0, 'number': ''}) if retention_id else {'total': 0, 'number': ''}  # Obtener dict de retención
         estado_cuentas[partner_name]['facturas'].append({
@@ -151,6 +175,7 @@ def obtener_cxc_aromotor(request):
             'pendiente': f['amount_residual'],
             'retencion_total': retention_value['total'],  # Total de la retención
             'retencion_numero': retention_value['number'],  # Número de la retención
+            'comercial': comercial_name,
             'cuotas': [],
             'cheques': []
         })

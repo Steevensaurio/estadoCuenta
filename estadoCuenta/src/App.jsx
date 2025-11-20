@@ -10,8 +10,7 @@ import { useSearch } from './hooks/useSearch'
 function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL;
-  const [clientes, setClientes] = useState([])
-  const {setIsLoading } = useSearch()
+  const {setIsLoading, clientes, setClientes} = useSearch()
 
   const obtener_estado_cuenta = async () => {
     try {
@@ -26,10 +25,10 @@ function App() {
     }
   }
 
-  const consultar = async (term) => {
+  const consultar = async (term, termVendedor, emisionDesde, emisionHasta, venciDesde, venciHasta) => {
     try {
       setIsLoading(true)
-      const response = await axios.get(`${apiUrl}obtener-cxc/?cliente=${term}`, {})
+      const response = await axios.get(`${apiUrl}obtener-cxc/?cliente=${term}&comercial=${termVendedor}&emision_desde=${emisionDesde}&emision_hasta=${emisionHasta}&vencimiento_desde=${venciDesde}&vencimiento_hasta=${venciHasta}`, {})
       setClientes(response.data)
       console.log(response.data)
     } catch (error) {
@@ -38,6 +37,7 @@ function App() {
       setIsLoading(false)
     }
   }
+
 
   useEffect(() => {
     obtener_estado_cuenta()
