@@ -178,14 +178,14 @@ const Table = ({data}) => {
           rows.push([
             '',
             '',
-            `Cuota ${index + 1}`,
+            `${index + 1}`,
             cuota.vencimiento,
             cuota.debit?.toFixed(2) || "0.00",
             (cuota.debit - cuota.residual).toFixed(2),
             '',
             cuota.residual?.toFixed(2) || "0.00",
             '',
-            daysOverdue < 0 && cuota.residual > 0 ? `${Math.abs(daysOverdue)} días` : "0 días"
+            daysOverdue < 0 && cuota.residual > 0 ? `${Math.abs(daysOverdue)}` : "0"
           ]);
         });
 
@@ -204,7 +204,7 @@ const Table = ({data}) => {
       headStyles: { fillColor: [250, 0, 0], textColor: 255, fontStyle: 'bold' },
 
       // Pinta en rojo las filas de cuotas vencidas con saldo residual > 0
-      // Y pone en negrita las filas de totales del cliente (fila con nombre del cliente)
+      // Y pone en negrita las filas de totales del cliente (fila con nombre del cliente) y gris más oscuro solo para esa fila
       // Y asegura que las filas vacías (espacio) tengan fondo blanco
       didParseCell: data => {
         if (data.section === 'body') {
@@ -227,12 +227,14 @@ const Table = ({data}) => {
             }
           }
 
-          // Poner en negrita las filas de totales del cliente (donde la primera celda tiene el nombre del cliente, no vacía ni 'Total', y la tercera está vacía)
+          // Poner en negrita y gris más oscuro solo las filas de totales del cliente (donde la primera celda tiene el nombre del cliente, no vacía ni 'Total', la tercera está vacía, y la quinta celda tiene valor)
           const firstCell = data.row.cells[0]?.text[0] || '';
           const thirdCell = data.row.cells[2]?.text[0] || '';
-          if (firstCell !== '' && firstCell !== 'Total' && thirdCell === '') {
+          const fifthCell = data.row.cells[4]?.text[0] || ''; // Celda de "Valor cuota" que en filas de cliente tiene totalCuotasCliente
+          if (firstCell !== '' && firstCell !== 'Total' && thirdCell === '' && fifthCell !== '') {
             Object.values(data.row.cells).forEach(cell => {
               cell.styles.fontStyle = 'bold';
+              cell.styles.fillColor = [190, 190, 190]; // Gris más oscuro
             });
           }
 
@@ -243,12 +245,26 @@ const Table = ({data}) => {
               cell.styles.fillColor = [255, 255, 255]; // Blanco
             });
           }
+
+          const secondCell = data.row.cells[1]?.text[0] || '';
+          if (firstCell === '' && secondCell === '' && thirdCell !== '' && !isNaN(parseInt(thirdCell))) {
+            // Aplicar padding pequeño verticalmente, manteniendo horizontal normal para visibilidad
+            data.cell.styles.cellPadding = { top: 0.5, right: 2, bottom: 0.5, left: 2 };
+          }
+
+          if (firstCell !== '' && firstCell !== 'Total' && thirdCell === '' && fifthCell === '') {
+            Object.values(data.row.cells).forEach(cell => {
+              cell.styles.fontStyle = 'bold';
+              cell.styles.fillColor = [230, 230, 230]; // Gris
+            });
+          }
         }
       }
     });
 
     doc.save("estado_cuenta.pdf");
   };
+
 
 
   const exportToExcel = (data) => {
