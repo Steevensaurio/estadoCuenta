@@ -1,7 +1,7 @@
 import { SearchProvider } from './context/SearchContext.jsx'
 import { BrowserRouter, Routes, Route  } from 'react-router-dom'
 import Login from './pages/Login.jsx'
-import EstadoCuenta from './pages/estadoCuenta.jsx'
+import EstadoCuenta from './pages/EstadoCuenta.jsx'
 import MainWrapper from './layouts/MainWrapper.jsx'
 import PrivateRoute from './layouts/PrivateRoute.jsx'
 import SetPassword from './pages/SetPassword.jsx'
