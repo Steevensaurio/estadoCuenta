@@ -97,15 +97,15 @@ def obtener_cxc_aromotor(request):
         ], 
         'order': 'invoice_date ASC'
     }
-    # Limitar a 20 facturas si no hay filtro de cliente
-    if not (cliente_filtro or comercial_filtro or femision_desde or femision_hasta or fvenci_desde or fvenci_hasta):
-        options_facturas['limit'] = 20
+
+    # if not (cliente_filtro or comercial_filtro or femision_desde or femision_hasta or fvenci_desde or fvenci_hasta):
+    #     options_facturas['limit'] = 20
 
     # --- Opciones para la consulta de cheques ---
     options_cheques = {'fields': ['id', 'name', 'amount', 'x_payment_invoice_ids', 'state', 'x_check_inbound_number']}
-    # Limitar a 20 cheques si no hay filtro de cliente
-    if not (cliente_filtro or comercial_filtro):
-        options_cheques['limit'] = 20
+    
+    # if not (cliente_filtro or comercial_filtro):
+    #     options_cheques['limit'] = 20
 
     # --- 1. Obtener facturas pendientes ---
     facturas = models.execute_kw(
